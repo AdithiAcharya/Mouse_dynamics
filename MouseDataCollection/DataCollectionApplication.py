@@ -38,7 +38,6 @@ class MouseDataCollector:
                 self.events.extend([abs(dx), abs(dy)])
                 self.check_block_size()
         self.last_pos = (x, y)
-        # Update counter on every move to feel more responsive
         self.counter_callback(len(self.events) // DIMENSIONS, self.block_count)
 
     def on_click(self, x, y, button, pressed):
@@ -75,8 +74,8 @@ class MouseDataCollector:
 
 class TaskCanvas(tk.Canvas):
     """The interactive canvas where users perform tasks with randomized shape positions."""
-    SHAPE_PADDING = 50  # Min distance from canvas edge
-    SHAPE_SIZE = 20     # Radius/half-width of shapes
+    SHAPE_PADDING = 50
+    SHAPE_SIZE = 20
     
     def __init__(self, parent, app_callback, **kwargs):
         super().__init__(parent, **kwargs)
@@ -132,11 +131,10 @@ class TaskCanvas(tk.Canvas):
 
         elif task == 'drag_circle':
             start_x, start_y = x, y
-            # Ensure the goal is a reasonable distance away
             while True:
                 end_x, end_y = self._get_random_coords()
                 distance = math.sqrt((start_x - end_x)**2 + (start_y - end_y)**2)
-                if distance > 150: # Minimum drag distance
+                if distance > 150:
                     break
             
             self.shapes['circle'] = self.create_oval(start_x-s, start_y-s, start_x+s, start_y+s, fill="purple", tags="circle")
@@ -179,18 +177,24 @@ class TaskCanvas(tk.Canvas):
         self.drag_data["y"] = event.y
 
     def on_release(self, event):
-        if self.drag_data["item"] is None or 'goal' not in self.shapes: return
-        
-        goal_coords = self.coords(self.shapes['goal'])
+        if self.drag_data["item"] is None or 'goal' not in self.shapes:
+            return
+
         item_coords = self.coords(self.drag_data["item"])
-        
+
+        if not item_coords:
+            self.drag_data["item"] = None
+            return
+
+        goal_coords = self.coords(self.shapes['goal'])
         item_center_x = (item_coords[0] + item_coords[2]) / 2
         item_center_y = (item_coords[1] + item_coords[3]) / 2
-        
+
         if goal_coords[0] < item_center_x < goal_coords[2] and \
            goal_coords[1] < item_center_y < goal_coords[3]:
             if self.tasks[self.current_task_index] == 'drag_circle':
                 self.next_task()
+
         self.drag_data["item"] = None
 
 class MouseApp:
@@ -206,11 +210,9 @@ class MouseApp:
         self.setup_main_window()
 
     def setup_main_window(self):
-        # Main Frame
         main_frame = tk.Frame(self.root, padx=10, pady=10)
         main_frame.pack(expand=True, fill=tk.BOTH)
 
-        # Configuration Frame
         config_frame = tk.Frame(main_frame)
         config_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -229,11 +231,9 @@ class MouseApp:
         tk.Radiobutton(config_frame, text="Genuine", variable=self.label_var, value="Genuine").grid(row=1, column=1, sticky='w', pady=(5,0))
         tk.Radiobutton(config_frame, text="Imposter", variable=self.label_var, value="Imposter").grid(row=1, column=2, sticky='w', columnspan=2, pady=(5,0))
 
-        # Canvas for tasks
         self.task_canvas = TaskCanvas(main_frame, self.app_callback, bg='lightgrey', relief=tk.SUNKEN, borderwidth=2)
         self.task_canvas.pack(expand=True, fill=tk.BOTH, pady=5)
         
-        # Bottom status and control frame
         bottom_frame = tk.Frame(main_frame)
         bottom_frame.pack(fill=tk.X, pady=(10, 0))
         
@@ -245,7 +245,6 @@ class MouseApp:
         self.timer_label = tk.Label(bottom_frame, text="Time: 00:00", font=("Helvetica", 10, "bold"))
         self.timer_label.pack(side=tk.LEFT, padx=10)
         
-        # Status Frame for right-aligned labels
         status_frame = tk.Frame(bottom_frame)
         status_frame.pack(side=tk.RIGHT)
 
@@ -259,7 +258,6 @@ class MouseApp:
             self.status_label.config(text=message)
         elif type == "task_complete":
             self.status_label.config(text=message)
-            # No need to call next_task from here, it's self-contained in the canvas loop
             
     def update_status(self, message):
         self.status_label.config(text=message)
