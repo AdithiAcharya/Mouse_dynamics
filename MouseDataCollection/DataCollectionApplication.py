@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import messagebox
 from pynput import mouse
 import random
+import math
 
 # --- Configuration ---
 BLOCK_SIZE = 128
@@ -37,6 +38,7 @@ class MouseDataCollector:
                 self.events.extend([abs(dx), abs(dy)])
                 self.check_block_size()
         self.last_pos = (x, y)
+        # Update counter on every move to feel more responsive
         self.counter_callback(len(self.events) // DIMENSIONS, self.block_count)
 
     def on_click(self, x, y, button, pressed):
@@ -72,7 +74,10 @@ class MouseDataCollector:
         self.status_callback(f"Stopped. Data saved in '{self.output_filename}'.")
 
 class TaskCanvas(tk.Canvas):
-    """The interactive canvas where users perform tasks."""
+    """The interactive canvas where users perform tasks with randomized shape positions."""
+    SHAPE_PADDING = 50  # Min distance from canvas edge
+    SHAPE_SIZE = 20     # Radius/half-width of shapes
+    
     def __init__(self, parent, app_callback, **kwargs):
         super().__init__(parent, **kwargs)
         self.app_callback = app_callback
@@ -87,40 +92,57 @@ class TaskCanvas(tk.Canvas):
         self.bind("<ButtonPress-1>", self.on_press)
         self.bind("<ButtonRelease-1>", self.on_release)
         self.bind("<B1-Motion>", self.on_drag)
-        self.bind("<ButtonPress-3>", self.on_right_click) # Right click
+        self.bind("<ButtonPress-3>", self.on_right_click)
         self.bind("<Double-Button-1>", self.on_double_click)
 
+    def _get_random_coords(self):
+        """Generates random coordinates within the canvas, respecting padding."""
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        x = random.randint(self.SHAPE_PADDING, w - self.SHAPE_PADDING)
+        y = random.randint(self.SHAPE_PADDING, h - self.SHAPE_PADDING)
+        return x, y
+
     def next_task(self):
-        self.delete("all") # Clear canvas
+        self.delete("all")
         self.current_task_index += 1
         if self.current_task_index >= len(self.tasks):
-            self.app_callback("task_complete", "All tasks complete! Restarting cycle.")
-            self.current_task_index = 0 # Loop back to the first task
+            self.app_callback("task_complete", "Cycle complete! Restarting...")
+            self.current_task_index = 0
 
         task = self.tasks[self.current_task_index]
-        self.app_callback("new_task", f"Current Task: {task.replace('_', ' ').title()}")
+        self.app_callback("new_task", f"Task: {task.replace('_', ' ').title()}")
         self.draw_shapes_for_task(task)
 
     def draw_shapes_for_task(self, task):
-        # Wait for the canvas to be drawn to get its dimensions
-        self.update_idletasks() 
-        w, h = self.winfo_width(), self.winfo_height()
-        
-        if task == 'left_click_triangle':
-            self.shapes['triangle'] = self.create_polygon(w/2, h/2-20, w/2-20, h/2+20, w/2+20, h/2+20, fill="orange", tags="triangle")
-            self.create_text(w/2, h/2 - 40, text="Left Click Here", font=("Helvetica", 12))
-        elif task == 'right_click_rev_triangle':
-            self.shapes['rev_triangle'] = self.create_polygon(w/2, h/2+20, w/2-20, h/2-20, w/2+20, h/2-20, fill="blue", tags="rev_triangle")
-            self.create_text(w/2, h/2 - 40, text="Right Click Here", font=("Helvetica", 12))
-        elif task == 'double_click_square':
-            self.shapes['square'] = self.create_rectangle(w/2-20, h/2-20, w/2+20, h/2+20, fill="green", tags="square")
-            self.create_text(w/2, h/2 - 40, text="Double Click Here", font=("Helvetica", 12))
-        elif task == 'drag_circle':
-            self.shapes['circle'] = self.create_oval(w/4-20, h/2-20, w/4+20, h/2+20, fill="purple", tags="circle")
-            self.shapes['goal'] = self.create_rectangle(3*w/4-25, h/2-25, 3*w/4+25, h/2+25, outline="red", width=2, tags="goal")
-            self.create_text(w/4, h/2 - 40, text="Drag Me", font=("Helvetica", 12))
-            self.create_text(3*w/4, h/2 - 40, text="To Here", font=("Helvetica", 12))
+        x, y = self._get_random_coords()
+        s = self.SHAPE_SIZE
 
+        if task == 'left_click_triangle':
+            self.shapes['triangle'] = self.create_polygon(x, y-s, x-s, y+s, x+s, y+s, fill="orange", tags="triangle")
+            self.create_text(x, y - (s+15), text="Left Click Here", font=("Helvetica", 10))
+        
+        elif task == 'right_click_rev_triangle':
+            self.shapes['rev_triangle'] = self.create_polygon(x, y+s, x-s, y-s, x+s, y-s, fill="blue", tags="rev_triangle")
+            self.create_text(x, y - (s+15), text="Right Click Here", font=("Helvetica", 10))
+        
+        elif task == 'double_click_square':
+            self.shapes['square'] = self.create_rectangle(x-s, y-s, x+s, y+s, fill="green", tags="square")
+            self.create_text(x, y - (s+15), text="Double Click Here", font=("Helvetica", 10))
+
+        elif task == 'drag_circle':
+            start_x, start_y = x, y
+            # Ensure the goal is a reasonable distance away
+            while True:
+                end_x, end_y = self._get_random_coords()
+                distance = math.sqrt((start_x - end_x)**2 + (start_y - end_y)**2)
+                if distance > 150: # Minimum drag distance
+                    break
+            
+            self.shapes['circle'] = self.create_oval(start_x-s, start_y-s, start_x+s, start_y+s, fill="purple", tags="circle")
+            self.shapes['goal'] = self.create_rectangle(end_x-(s+5), end_y-(s+5), end_x+(s+5), end_y+(s+5), outline="red", width=2, tags="goal")
+            self.create_text(start_x, start_y - (s+15), text="Drag Me", font=("Helvetica", 10))
+            self.create_text(end_x, end_y - (s+20), text="To Here", font=("Helvetica", 10))
 
     def on_press(self, event):
         item = self.find_withtag(tk.CURRENT)
@@ -157,7 +179,8 @@ class TaskCanvas(tk.Canvas):
         self.drag_data["y"] = event.y
 
     def on_release(self, event):
-        if self.drag_data["item"] is None: return
+        if self.drag_data["item"] is None or 'goal' not in self.shapes: return
+        
         goal_coords = self.coords(self.shapes['goal'])
         item_coords = self.coords(self.drag_data["item"])
         
@@ -175,70 +198,79 @@ class MouseApp:
     def __init__(self, root):
         self.root = root
         self.root.title("SapiMouse Task-Based Data Logger")
-        self.root.geometry("600x500")
+        self.root.geometry("700x600")
         self.collector = None
         self.collector_thread = None
         self.remaining_time = 0
         self.timer_id = None
-
         self.setup_main_window()
 
     def setup_main_window(self):
-        top_frame = tk.Frame(self.root, pady=10)
-        top_frame.pack(fill=tk.X)
-        tk.Label(top_frame, text="Username:").pack(side=tk.LEFT, padx=(10, 5))
-        self.username_entry = tk.Entry(top_frame, width=15)
-        self.username_entry.pack(side=tk.LEFT, padx=5)
+        # Main Frame
+        main_frame = tk.Frame(self.root, padx=10, pady=10)
+        main_frame.pack(expand=True, fill=tk.BOTH)
+
+        # Configuration Frame
+        config_frame = tk.Frame(main_frame)
+        config_frame.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(config_frame, text="Username:").grid(row=0, column=0, sticky='w', padx=5)
+        self.username_entry = tk.Entry(config_frame)
+        self.username_entry.grid(row=0, column=1, padx=5)
         self.username_entry.insert(0, "user1")
 
-        tk.Label(top_frame, text="Duration (min):").pack(side=tk.LEFT, padx=5)
-        self.duration_entry = tk.Entry(top_frame, width=5)
-        self.duration_entry.pack(side=tk.LEFT, padx=5)
+        tk.Label(config_frame, text="Duration (min):").grid(row=0, column=2, sticky='w', padx=5)
+        self.duration_entry = tk.Entry(config_frame, width=5)
+        self.duration_entry.grid(row=0, column=3, padx=5)
         self.duration_entry.insert(0, "3")
-
-        self.label_var = tk.StringVar(value="Genuine")
-        label_frame = tk.Frame(self.root)
-        tk.Label(label_frame, text="User Type:").pack(side=tk.LEFT, padx=(10, 5))
-        tk.Radiobutton(label_frame, text="Genuine", variable=self.label_var, value="Genuine").pack(side=tk.LEFT)
-        tk.Radiobutton(label_frame, text="Imposter", variable=self.label_var, value="Imposter").pack(side=tk.LEFT)
-        label_frame.pack(pady=5)
-
-        self.task_canvas = TaskCanvas(self.root, self.app_callback, bg='lightgrey', relief=tk.SUNKEN, borderwidth=2)
-        self.task_canvas.pack(expand=True, fill=tk.BOTH, padx=10, pady=5)
         
-        bottom_frame = tk.Frame(self.root, pady=10)
-        bottom_frame.pack(fill=tk.X)
-        self.start_button = tk.Button(bottom_frame, text="Start Collection", command=self.start_collection, bg="lightgreen")
-        self.start_button.pack(side=tk.LEFT, padx=(10, 5))
-        self.stop_button = tk.Button(bottom_frame, text="Stop Collection", command=self.stop_collection, state=tk.DISABLED, bg="lightcoral")
+        self.label_var = tk.StringVar(value="Genuine")
+        tk.Label(config_frame, text="User Type:").grid(row=1, column=0, sticky='w', padx=5, pady=(5,0))
+        tk.Radiobutton(config_frame, text="Genuine", variable=self.label_var, value="Genuine").grid(row=1, column=1, sticky='w', pady=(5,0))
+        tk.Radiobutton(config_frame, text="Imposter", variable=self.label_var, value="Imposter").grid(row=1, column=2, sticky='w', columnspan=2, pady=(5,0))
+
+        # Canvas for tasks
+        self.task_canvas = TaskCanvas(main_frame, self.app_callback, bg='lightgrey', relief=tk.SUNKEN, borderwidth=2)
+        self.task_canvas.pack(expand=True, fill=tk.BOTH, pady=5)
+        
+        # Bottom status and control frame
+        bottom_frame = tk.Frame(main_frame)
+        bottom_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        self.start_button = tk.Button(bottom_frame, text="Start Collection", command=self.start_collection, bg="#90EE90")
+        self.start_button.pack(side=tk.LEFT, padx=5)
+        self.stop_button = tk.Button(bottom_frame, text="Stop Collection", command=self.stop_collection, state=tk.DISABLED, bg="#F08080")
         self.stop_button.pack(side=tk.LEFT, padx=5)
         
         self.timer_label = tk.Label(bottom_frame, text="Time: 00:00", font=("Helvetica", 10, "bold"))
         self.timer_label.pack(side=tk.LEFT, padx=10)
+        
+        # Status Frame for right-aligned labels
+        status_frame = tk.Frame(bottom_frame)
+        status_frame.pack(side=tk.RIGHT)
 
-        self.status_label = tk.Label(bottom_frame, text="Ready to start.", fg="blue")
-        self.status_label.pack(side=tk.RIGHT, padx=10)
-        self.counter_label = tk.Label(bottom_frame, text="Events: 0/128 | Blocks: 0", fg="navy")
-        self.counter_label.pack(side=tk.RIGHT, padx=10)
+        self.status_label = tk.Label(status_frame, text="Ready to start.", fg="blue", anchor='e')
+        self.status_label.pack(fill=tk.X)
+        self.counter_label = tk.Label(status_frame, text="Events: 0/128 | Blocks: 0", fg="navy", anchor='e')
+        self.counter_label.pack(fill=tk.X)
 
     def app_callback(self, type, message):
         if type == "new_task":
             self.status_label.config(text=message)
         elif type == "task_complete":
             self.status_label.config(text=message)
-            self.task_canvas.next_task()
-
+            # No need to call next_task from here, it's self-contained in the canvas loop
+            
     def update_status(self, message):
         self.status_label.config(text=message)
 
     def update_counters(self, event_count, block_count):
-        self.counter_label.config(text=f"Events: {event_count}/{BLOCK_SIZE} | Blocks: {block_count}")
+        self.counter_label.config(text=f"Events: {event_count % BLOCK_SIZE}/{BLOCK_SIZE} | Blocks: {block_count}")
 
     def countdown(self):
         if self.remaining_time > 0:
             mins, secs = divmod(self.remaining_time, 60)
-            time_str = f"Time: {mins:02d}:{secs:02d}"
-            self.timer_label.config(text=time_str)
+            self.timer_label.config(text=f"Time: {mins:02d}:{secs:02d}")
             self.remaining_time -= 1
             self.timer_id = self.root.after(1000, self.countdown)
         else:
@@ -249,17 +281,17 @@ class MouseApp:
         username = self.username_entry.get().strip()
         duration_str = self.duration_entry.get().strip()
         label = self.label_var.get()
-        if not username or not duration_str.isdigit():
-            messagebox.showerror("Error", "Please enter a valid username and a numeric duration.")
+        if not username or not duration_str.isdigit() or int(duration_str) <= 0:
+            messagebox.showerror("Error", "Please enter a valid username and a positive numeric duration.")
             return
 
+        for widget in [self.username_entry, self.duration_entry]:
+            widget.config(state=tk.DISABLED)
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
-        self.username_entry.config(state=tk.DISABLED)
-        self.duration_entry.config(state=tk.DISABLED)
         
         self.remaining_time = int(duration_str) * 60
-        self.countdown() # Start the timer
+        self.countdown()
 
         self.collector = MouseDataCollector(username, label, duration_str, self.update_status, self.update_counters)
         self.collector.start()
@@ -269,18 +301,19 @@ class MouseApp:
         if self.timer_id:
             self.root.after_cancel(self.timer_id)
             self.timer_id = None
-
-        if self.collector: self.collector.stop()
+        if self.collector: 
+            self.collector.stop()
         
+        for widget in [self.username_entry, self.duration_entry]:
+            widget.config(state=tk.NORMAL)
         self.start_button.config(state=tk.NORMAL)
         self.stop_button.config(state=tk.DISABLED)
-        self.username_entry.config(state=tk.NORMAL)
-        self.duration_entry.config(state=tk.NORMAL)
+
         self.update_counters(0, 0)
         self.task_canvas.delete("all")
         self.task_canvas.current_task_index = -1
         self.timer_label.config(text="Time: 00:00")
-
+        self.status_label.config(text="Ready to start.")
 
 if __name__ == "__main__":
     root = tk.Tk()
